@@ -2,6 +2,8 @@ package main
 
 import "core:fmt"
 import "core:math"
+import "core:math/rand"
+import "core:time"
 import rl "vendor:raylib"
 
 WINDOW_WIDTH :: 600
@@ -9,14 +11,21 @@ WINDOW_HEIGHT :: 900
 
 PROJECTILE_WIDTH: f32 : 2.0
 PROJECTILE_HEIGHT: f32 : 16.0
-PROJECTILE_COLOR :: rl.GREEN
-PROJECTILE_SPEED :: 600
-// removed_projectiles := make(map[int]struct {})
+PROJECTILE_SPEED_PLAYER :: 600
+PROJECTILE_SPEED_INVADER :: 450
+
+EntityType :: enum u8 {
+	Player  = 0,
+	Invader = 1,
+}
+EntityColors := []rl.Color{rl.GREEN, rl.RED}
 
 Projectile :: struct {
 	x:         f32,
 	y:         f32,
 	timealive: f32,
+	source:    EntityType,
+	alive:     bool,
 }
 
 INVADERS_PER_LINE :: 5
@@ -25,29 +34,28 @@ INVADER_CAPACITY :: INVADER_LINES * INVADERS_PER_LINE
 INVADER_SIZE :: rl.Vector2{32, 32}
 INVADER_PADDING :: f32(16)
 
-// invader_direction := 1
-// Player :: struct {
-// 	position:    rl.Vector2,
-// }
-
 // 48x48 sized player
 PLAYER_SIZE :: rl.Vector2{48, 48}
-PLAYER_COLOR :: rl.GREEN
 PLAYER_Y :: WINDOW_HEIGHT - PLAYER_SIZE.y * 2
 PLAYER_SPEED :: 200
 
+PLAYER_COLOR :: rl.GREEN
+INVADER_COLOR :: rl.RED
+
 BEATS_IN_SONG :: 8
 
+PROJECTILE_CAPACITY :: 256
+
 GameState :: struct {
-	player_position:            rl.Vector2,
-	player_projectiles:         [dynamic]Projectile,
-	removed_player_projectiles: map[int]struct {},
-	invader_dead:               [INVADER_CAPACITY]bool,
-	invader_x:                  [INVADER_CAPACITY]f32,
-	invader_y:                  [INVADER_CAPACITY]f32,
-	invader_direction:          i8,
-	bpm:                        u8,
-	rhytms:                     map[int]struct {},
+	rand:              rand.Rand,
+	player_position:   rl.Vector2,
+	projectiles:       [PROJECTILE_CAPACITY]Projectile,
+	invader_dead:      [INVADER_CAPACITY]bool,
+	invader_x:         [INVADER_CAPACITY]f32,
+	invader_y:         [INVADER_CAPACITY]f32,
+	invader_direction: i8,
+	bpm:               u8,
+	rhytms:            map[int]struct {},
 }
 
 gameState := GameState{}
@@ -64,16 +72,21 @@ get_invaders_width :: proc() -> f32 {
 }
 
 init_game :: proc() {
+	t := time.now()
+	gameState.rand = rand.create(u64(time.to_unix_seconds(t)))
+
 	gameState.player_position = rl.Vector2(0)
 	gameState.player_position.x = WINDOW_WIDTH / 2 - PLAYER_SIZE.x / 2
 	gameState.player_position.y = PLAYER_Y
-	gameState.player_projectiles = [dynamic]Projectile{}
+
+	for i := 0; i < PROJECTILE_CAPACITY; i += 1 {
+		gameState.projectiles[i] = create_projectile_dead()
+	}
 
 	gameState.invader_dead = [INVADER_CAPACITY]bool{}
 	gameState.invader_x = [INVADER_CAPACITY]f32{}
 	gameState.invader_y = [INVADER_CAPACITY]f32{}
 	gameState.invader_direction = 1
-	fmt.printf("hej")
 
 	gameState.bpm = 130
 	gameState.rhytms[0] = {}
@@ -83,10 +96,29 @@ init_game :: proc() {
 	setup_invaders()
 }
 
-create_projectile :: proc() -> Projectile {
+find_available_projectile_index :: proc() -> int {
+	for i := 0; i < PROJECTILE_CAPACITY; i += 1 {
+		if !gameState.projectiles[i].alive {
+			return i
+		}
+	}
+
+	return -1
+}
+
+create_projectile_player :: proc() -> Projectile {
 	x := gameState.player_position.x + PLAYER_SIZE.x / 2
 	y := gameState.player_position.y
-	return Projectile{x, y, f32(0)}
+	return Projectile{x, y, f32(0), .Player, true}
+}
+
+create_projectile_invader :: proc(x: f32, y: f32) -> Projectile {
+	return Projectile{x, y, f32(0), .Invader, true}
+}
+
+create_projectile_dead :: proc() -> Projectile {
+	return Projectile{f32(0), f32(0), f32(0), .Player, false}
+
 }
 
 draw_player :: proc() {
@@ -94,14 +126,15 @@ draw_player :: proc() {
 }
 
 draw_projectiles :: proc() {
-	for i := uint(0); i < len(gameState.player_projectiles); i += 1 {
-		pj := gameState.player_projectiles[i]
+	for i := uint(0); i < len(gameState.projectiles); i += 1 {
+		pj := gameState.projectiles[i]
+		if !pj.alive {continue}
 		rl.DrawRectangle(
 			i32(pj.x),
 			i32(pj.y),
 			i32(PROJECTILE_WIDTH),
 			i32(PROJECTILE_HEIGHT),
-			PROJECTILE_COLOR,
+			EntityColors[u8(pj.source)],
 		)
 	}
 }
@@ -126,7 +159,7 @@ update_player :: proc() {
 
 	// Shoot?!?!
 	if rl.IsKeyPressed(rl.KeyboardKey.SPACE) {
-		append(&gameState.player_projectiles, create_projectile())
+		gameState.projectiles[find_available_projectile_index()] = create_projectile_player()
 	}
 }
 
@@ -156,7 +189,8 @@ update_invaders :: proc() {
 	for x, i in gameState.invader_x {
 		if gameState.invader_dead[i] {continue}
 
-		for pjl, j in gameState.player_projectiles {
+		for pjl, j in gameState.projectiles {
+			if pjl.source != .Player || !pjl.alive {continue}
 			projectile_rec := rl.Rectangle{pjl.x, pjl.y, PROJECTILE_WIDTH, PROJECTILE_HEIGHT}
 			invader_rec := rl.Rectangle {
 				gameState.invader_x[i],
@@ -165,8 +199,14 @@ update_invaders :: proc() {
 				INVADER_SIZE.y,
 			}
 			if rl.CheckCollisionRecs(projectile_rec, invader_rec) {
+				// Feedback
+				// TODO: Camera shake
+				// TODO: Particles
+				create_emitter({x, y, .Invader})
+
+				// Unalive them
 				gameState.invader_dead[i] = true
-				gameState.removed_player_projectiles[j] = {}
+				gameState.projectiles[j].alive = false
 			}
 		}
 	}
@@ -179,45 +219,65 @@ update_invaders :: proc() {
 
 update_projectiles :: proc() {
 	dt := rl.GetFrameTime()
-	for i := 0; i < len(gameState.player_projectiles); i += 1 {
-		pj := &gameState.player_projectiles[i]
-		pj.y -= PROJECTILE_SPEED * dt
+	for i := 0; i < len(gameState.projectiles); i += 1 {
+		pj := &gameState.projectiles[i]
+		if !pj.alive {continue}
+		switch (pj.source) {
+		case .Player:
+			pj.y -= PROJECTILE_SPEED_PLAYER * dt
+			break
+		case .Invader:
+			pj.y += PROJECTILE_SPEED_INVADER * dt
+			break
+		}
+
 		pj.timealive += dt
 		if pj.timealive > 5 {
-			gameState.removed_player_projectiles[i] = {}
+			gameState.projectiles[i].alive = false
 		}
 	}
 }
 
-remove_dead_projectiles :: proc() {
-	for i, _ in gameState.removed_player_projectiles {
-		unordered_remove(&gameState.player_projectiles, i)
-	}
-	clear(&gameState.removed_player_projectiles)
-}
+rhytm_event :: proc() {
+	{ /* MOVE THE INVADERS */
+		would_translate := 50 * f32(gameState.invader_direction)
+		someone_hit_wall := false
+		for x, i in gameState.invader_x {
+			if (x + would_translate) + INVADER_SIZE.x > WINDOW_WIDTH &&
+			   gameState.invader_direction == 1 {
+				someone_hit_wall = true
+				break
+			} else if (x + would_translate) < 0 && gameState.invader_direction == -1 {
+				someone_hit_wall = true
+				break
+			}
+		}
 
-rhtym_event :: proc() {
-	would_translate := 50 * f32(gameState.invader_direction)
-
-	someone_hit_wall := false
-	for x, i in gameState.invader_x {
-		if (x + would_translate) + INVADER_SIZE.x > WINDOW_WIDTH &&
-		   gameState.invader_direction == 1 {
-			someone_hit_wall = true
-			break
-		} else if (x + would_translate) < 0 && gameState.invader_direction == -1 {
-			someone_hit_wall = true
-			break
+		if someone_hit_wall {
+			gameState.invader_direction *= -1
+			gameState.invader_y += 20
+		} else {
+			translation := 50 * f32(gameState.invader_direction)
+			gameState.invader_x = gameState.invader_x + translation
 		}
 	}
 
-	if someone_hit_wall {
-		gameState.invader_direction *= -1
-		gameState.invader_y += 20
-	} else {
-		translation := 50 * f32(gameState.invader_direction)
-		gameState.invader_x = gameState.invader_x + translation
+	// Important to do this after moving the invaders, since this will make sure the shot is coming from the correct position
+	{ /* SHOOT PROJECTILES FROM INVADERS */
+		for i := 0; i < INVADER_CAPACITY; i += 1 {
+			r := (f32)(rand.uint32(&gameState.rand)) / 4_294_967_295
+			if r > 0.9 {
+				x := gameState.invader_x[i] + (INVADER_SIZE[0] / 2)
+				y := gameState.invader_y[i] + (INVADER_SIZE[1] / 2)
+				gameState.projectiles[find_available_projectile_index()] =
+					create_projectile_invader(x, y)
+			}
+		}
 	}
+}
+
+foo :: proc(x: u32) -> u32 {
+	return x + 1
 }
 
 main :: proc() {
@@ -257,7 +317,7 @@ main :: proc() {
 			if currentBeat != lastFrameBeat {
 				_, ok := gameState.rhytms[currentBeat]
 				if ok {
-					rhtym_event()
+					rhytm_event()
 				}
 			}
 
@@ -266,7 +326,6 @@ main :: proc() {
 
 		// Update stuff
 		{
-			remove_dead_projectiles()
 			update_player()
 			update_projectiles()
 			update_invaders()
