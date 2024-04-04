@@ -73,6 +73,7 @@ init_game :: proc() {
 	gameState.invader_x = [INVADER_CAPACITY]f32{}
 	gameState.invader_y = [INVADER_CAPACITY]f32{}
 	gameState.invader_direction = 1
+	fmt.printf("hej")
 
 	gameState.bpm = 130
 	gameState.rhytms[0] = {}
