@@ -9,16 +9,28 @@ EmitterDefinition :: struct {
 		PlayerShoot,
 	},
 	emitCount: u32, // amount of particles to emit per second
+	force: rl.Vector2,
 }
 
 Particle :: struct {
-	pos: rl.Vector2,
+	pos:        rl.Vector2,
+	deathstamp: f64,
+	active:     bool,
 }
+
+Range :: struct($Type: typeid) {
+	min: Type,
+	max: Type,
+}
+
+PARTICLE_CAPACITY :: 256
 
 Emitter :: struct {
 	using _:    EmitterDefinition,
 	isEmitting: bool,
-	particles:  [dynamic]Particle,
+	particles:  [PARTICLE_CAPACITY]Particle,
+	duration:   Range(f32),
+	deathstamp: f64,
 }
 
 // Master of all Particles and their Emitters
@@ -36,7 +48,7 @@ PS_create_emitter :: proc(def: EmitterDefinition) {
 			type = def.type,
 			emitCount = def.emitCount,
 			isEmitting = false,
-			particles = [dynamic]Particle{},
+			particles = [PARTICLE_CAPACITY]Particle{},
 		},
 	)
 }
@@ -48,9 +60,15 @@ PS_update :: proc() {
 }
 
 PS_update_emitter :: proc(emitter: ^Emitter) -> bool {
-	for particle in emitter.particles {
-
+	time := rl.GetTime()
+	for i := 0; i < len(emitter.particles); i += 1 {
+		p := &emitter.particles[i]
+		if time > p.deathstamp {
+			p.active = false
+			continue
+		} else {
+			
+		}
 	}
-
-	return false
+	return time > emitter.deathstamp
 }
