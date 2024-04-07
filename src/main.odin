@@ -202,7 +202,7 @@ update_invaders :: proc() {
 				// Feedback
 				// TODO: Camera shake
 				// TODO: Particles
-				create_emitter({x, y, .Invader})
+				// create_emitter({x, y, .Invader})
 
 				// Unalive them
 				gameState.invader_dead[i] = true
@@ -284,6 +284,10 @@ main :: proc() {
 	rl.InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Odin Invaders")
 	rl.SetTargetFPS(144)
 
+	// Init particle system
+	PS_init()
+	defer PS_destruct()
+
 	init_game()
 
 	rl.InitAudioDevice()
@@ -302,6 +306,16 @@ main :: proc() {
 
 	currentBeat := int(0)
 	lastFrameBeat := int(-1)
+
+	test := EmitterDefinition {
+		origin = rl.Vector2{WINDOW_WIDTH/2.0, WINDOW_HEIGHT/2.0},
+		type = .PlayerShoot,
+		force = rl.Vector2{0, 0},
+		emitRate = 2,
+		emitCount = 100,
+		particleDuration = 100,
+	}
+	PS_create_emitter(test)
 
 	for {
 		if rl.WindowShouldClose() {
@@ -329,16 +343,22 @@ main :: proc() {
 			update_player()
 			update_projectiles()
 			update_invaders()
+
+			PS_update()
 		}
 
 		// Draw stuff
 		{
 			rl.BeginDrawing()
 			rl.ClearBackground(rl.BLACK)
+
+			/*
 			rl.DrawText("Invaders left: -", 0, 0, 20, rl.WHITE)
 			draw_player()
 			draw_projectiles()
 			draw_invaders()
+			*/
+			PS_draw()
 
 			rl.EndDrawing()
 		}
