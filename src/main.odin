@@ -21,11 +21,11 @@ EntityType :: enum u8 {
 EntityColors := []rl.Color{rl.GREEN, rl.RED}
 
 Projectile :: struct {
-	x:         f32,
-	y:         f32,
+	position:  rl.Vector2,
 	timealive: f32,
 	source:    EntityType,
 	alive:     bool,
+	attached_emitter: ^Emitter,
 }
 
 INVADERS_PER_LINE :: 5
@@ -49,7 +49,7 @@ PROJECTILE_CAPACITY :: 256
 GameState :: struct {
 	rand:              rand.Rand,
 	player_position:   rl.Vector2,
-	projectiles:       [PROJECTILE_CAPACITY]Projectile,
+	projectiles:       #soa[PROJECTILE_CAPACITY]Projectile,
 	invader_dead:      [INVADER_CAPACITY]bool,
 	invader_x:         [INVADER_CAPACITY]f32,
 	invader_y:         [INVADER_CAPACITY]f32,
@@ -109,15 +109,15 @@ find_available_projectile_index :: proc() -> int {
 create_projectile_player :: proc() -> Projectile {
 	x := gameState.player_position.x + PLAYER_SIZE.x / 2
 	y := gameState.player_position.y
-	return Projectile{x, y, f32(0), .Player, true}
+	return Projectile{rl.Vector2{x, y}, f32(0), .Player, true, nil}
 }
 
 create_projectile_invader :: proc(x: f32, y: f32) -> Projectile {
-	return Projectile{x, y, f32(0), .Invader, true}
+	return Projectile{rl.Vector2{x, y}, f32(0), .Invader, true, nil}
 }
 
 create_projectile_dead :: proc() -> Projectile {
-	return Projectile{f32(0), f32(0), f32(0), .Player, false}
+	return Projectile{rl.Vector2{0, 0}, f32(0), .Player, false, nil}
 
 }
 
@@ -130,8 +130,8 @@ draw_projectiles :: proc() {
 		pj := gameState.projectiles[i]
 		if !pj.alive {continue}
 		rl.DrawRectangle(
-			i32(pj.x),
-			i32(pj.y),
+			i32(pj.position.x),
+			i32(pj.position.y),
 			i32(PROJECTILE_WIDTH),
 			i32(PROJECTILE_HEIGHT),
 			EntityColors[u8(pj.source)],
@@ -159,14 +159,28 @@ update_player :: proc() {
 
 	// Shoot?!?!
 	if rl.IsKeyPressed(rl.KeyboardKey.SPACE) {
-		gameState.projectiles[find_available_projectile_index()] = create_projectile_player()
+		index := find_available_projectile_index();
+		gameState.projectiles[index] = create_projectile_player()
+		test := EmitterDefinition {
+			origin = rl.Vector2{0, 0},
+			type = ProjectileType {
+				projectile = &gameState.projectiles.position[index],
+			},
+			force = rl.Vector2{0, 200},
+			emitRate = 0.1,
+			emitCount = 4,
+			particleDuration = 1,
+		}
+
+		emitter := PS_create_emitter(test)
+		gameState.projectiles[index].attached_emitter = emitter
 	}
 }
 
 setup_invaders :: proc() {
 	invaders_width := get_invaders_width()
 	origin_x := WINDOW_WIDTH / 2 - invaders_width / 2
-	origin_y := f32(100)
+	origin_y := f32(100) 
 	for i := 0; i < INVADER_CAPACITY; i += 1 {
 		padding := INVADER_PADDING
 		x, y := get_invader_position(i)
@@ -191,7 +205,7 @@ update_invaders :: proc() {
 
 		for pjl, j in gameState.projectiles {
 			if pjl.source != .Player || !pjl.alive {continue}
-			projectile_rec := rl.Rectangle{pjl.x, pjl.y, PROJECTILE_WIDTH, PROJECTILE_HEIGHT}
+			projectile_rec := rl.Rectangle{pjl.position.x, pjl.position.y, PROJECTILE_WIDTH, PROJECTILE_HEIGHT}
 			invader_rec := rl.Rectangle {
 				gameState.invader_x[i],
 				gameState.invader_y[i],
@@ -206,7 +220,8 @@ update_invaders :: proc() {
 
 				// Unalive them
 				gameState.invader_dead[i] = true
-				gameState.projectiles[j].alive = false
+				gameState.projectiles.alive[j] = false
+				gameState.projectiles.attached_emitter[j].kill = true
 			}
 		}
 	}
@@ -219,21 +234,21 @@ update_invaders :: proc() {
 
 update_projectiles :: proc() {
 	dt := rl.GetFrameTime()
+	projectiles := &gameState.projectiles
 	for i := 0; i < len(gameState.projectiles); i += 1 {
-		pj := &gameState.projectiles[i]
-		if !pj.alive {continue}
-		switch (pj.source) {
+		if !projectiles.alive[i] {continue}
+		switch (projectiles.source[i]) {
 		case .Player:
-			pj.y -= PROJECTILE_SPEED_PLAYER * dt
+			projectiles.position[i].y -= PROJECTILE_SPEED_PLAYER * dt
 			break
 		case .Invader:
-			pj.y += PROJECTILE_SPEED_INVADER * dt
+			projectiles.position[i].y += PROJECTILE_SPEED_INVADER * dt
 			break
 		}
 
-		pj.timealive += dt
-		if pj.timealive > 5 {
-			gameState.projectiles[i].alive = false
+		projectiles.timealive[i] += dt
+		if projectiles.timealive[i] > 5 {
+			projectiles.alive[i] = false
 		}
 	}
 }
@@ -294,7 +309,7 @@ main :: proc() {
 	song := rl.LoadMusicStream("../assets/beat-invaders.wav")
 	song.looping = true
 	rl.SetMusicVolume(song, 0.2)
-	rl.PlayMusicStream(song)
+	// rl.PlayMusicStream(song)
 
 	totalLength := rl.GetMusicTimeLength(song)
 	bps := f32(gameState.bpm) / 60
@@ -307,15 +322,19 @@ main :: proc() {
 	currentBeat := int(0)
 	lastFrameBeat := int(-1)
 
+	/*
 	test := EmitterDefinition {
 		origin = rl.Vector2{WINDOW_WIDTH/2.0, WINDOW_HEIGHT/2.0},
-		type = .PlayerShoot,
+		type = ProjectileType {
+			
+		},
 		force = rl.Vector2{0, 0},
 		emitRate = 2,
-		emitCount = 100,
-		particleDuration = 100,
+		emitCount = 1,
+		particleDuration = 1,
 	}
 	PS_create_emitter(test)
+	*/
 
 	for {
 		if rl.WindowShouldClose() {
@@ -323,7 +342,7 @@ main :: proc() {
 		}
 
 		{
-			rl.UpdateMusicStream(song)
+			// rl.UpdateMusicStream(song)
 
 			t := rl.GetMusicTimePlayed(song) / totalLength // 0 -> 1
 			t *= BEATS_IN_SONG // 0 -> BEATS_IN_SONG
@@ -352,12 +371,10 @@ main :: proc() {
 			rl.BeginDrawing()
 			rl.ClearBackground(rl.BLACK)
 
-			/*
 			rl.DrawText("Invaders left: -", 0, 0, 20, rl.WHITE)
 			draw_player()
 			draw_projectiles()
 			draw_invaders()
-			*/
 			PS_draw()
 
 			rl.EndDrawing()
