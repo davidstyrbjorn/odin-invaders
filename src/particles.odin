@@ -46,12 +46,15 @@ PlayerType :: struct {
 ProjectileType :: struct {
 	projectile: ^rl.Vector2,
 }
+None :: struct {}
 Type :: union {
+	None,
 	PlayerType,
 	ProjectileType,
 }
 
 Emitter :: struct {
+	active:        bool, // indicating if emitter is alive in world
 	using _:       EmitterDefinition,
 	particles:     #soa[PARTICLE_CAPACITY]Particle,
 	deathstamp:    f64,
@@ -59,40 +62,57 @@ Emitter :: struct {
 	kill:          bool,
 }
 
+EMITTER_CAPACITY :: 32
+
 // Master of all Particles and their Emitters
 ParticleSystem :: struct {
-	emitters: [dynamic]Emitter,
+	emitters: [EMITTER_CAPACITY]Emitter,
 	rand:     rand.Rand,
 }
 
 PS := ParticleSystem{}
 
 PS_init :: proc() {
-	PS.emitters = [dynamic]Emitter{}
+	for i := 0; i < EMITTER_CAPACITY; i += 1 {
+		PS.emitters[i] = Emitter {
+			origin               = rl.Vector2{-100, -100},
+			type                 = None{},
+			emitCount            = 0,
+			emitRate             = 0,
+			particleDuration     = 0,
+			initVelocityCallback = PS_default_cb_init_particle_velocity,
+			particles            = #soa[PARTICLE_CAPACITY]Particle{},
+			deathstamp           = -1, // TODO: All emitters shouldn't have a 5 seconds default alive time
+			emissionstamp        = 0, // immediate emission upon creation
+			kill                 = false,
+			active               = false,
+		}
+	}
 	t := time.now()
 	PS.rand = rand.create(u64(time.to_unix_seconds(t)))
 }
 
 PS_destruct :: proc() {
-	clear(&PS.emitters)
+	// Disable all emitters?	
 }
 
-PS_create_emitter :: proc(def: EmitterDefinition) -> ^Emitter {
-	new_emitter := Emitter {
-		origin               = def.origin,
-		type                 = def.type,
-		emitCount            = def.emitCount,
-		emitRate             = def.emitRate,
-		particleDuration     = def.particleDuration,
-		initVelocityCallback = PS_default_cb_init_particle_velocity,
-		particles            = #soa[PARTICLE_CAPACITY]Particle{},
-		deathstamp           = rl.GetTime() + 5, // TODO: All emitters shouldn't have a 5 seconds default alive time
-		emissionstamp        = 0, // immediate emission upon creation
-		kill                 = false,
+PS_create_emitter :: proc(def: EmitterDefinition) -> int {
+	slot := PS_find_available_emitter_slot(&PS.emitters)
+	if slot == -1 {
+		fmt.println("Ran out of emitters!")
+		return slot // Break procedure here!
 	}
-
-	append(&PS.emitters, new_emitter)
-	emitter := &PS.emitters[len(PS.emitters) - 1]
+	
+	emitter := &PS.emitters[slot]
+	emitter.origin = def.origin
+	emitter.type = def.type
+	emitter.emitCount = def.emitCount
+	emitter.emitRate = def.emitRate
+	emitter.particleDuration = def.particleDuration
+	emitter.initVelocityCallback = PS_default_cb_init_particle_velocity
+	emitter.deathstamp = rl.GetTime() + 5
+	emitter.kill = false
+	emitter.active = true
 
 	// Init particles iteratively
 	for i := 0; i < PARTICLE_CAPACITY; i += 1 {
@@ -103,19 +123,14 @@ PS_create_emitter :: proc(def: EmitterDefinition) -> ^Emitter {
 		emitter.particles.birthstamp[i] = f64(-1)
 	}
 
-	return emitter
+	fmt.printf("Emitter init at %i\n", slot)
+
+	return slot
 }
 
 PS_update :: proc() {
-	dead_emitter := -1
 	for i := 0; i < len(PS.emitters); i += 1 {
-		if PS_update_emitter(&PS.emitters[i]) == true { 				
-			dead_emitter = i
-		}
-	}
-
-	if dead_emitter != -1 {
-		ordered_remove(&PS.emitters, dead_emitter)
+		PS_update_emitter(&PS.emitters[i])
 	}
 }
 
@@ -150,30 +165,31 @@ PS_emit :: proc(emitter: ^Emitter, slot: int) {
 	emitter.particles.active[slot] = true
 }
 
-print_vec2 :: proc(vec2 : rl.Vector2) {
-	fmt.printf("x: %1.f, y: %.1f\n", vec2[0], vec2[1]);
+print_vec2 :: proc(vec2: rl.Vector2) {
+	fmt.printf("x: %1.f, y: %.1f\n", vec2[0], vec2[1])
 }
 
-PS_update_emitter :: proc(emitter: ^Emitter) -> bool {
+PS_update_emitter :: proc(emitter: ^Emitter) {
 	time := rl.GetTime()
-
-	// Different type of emitters might have origin
-	type: Type = emitter.type
-	switch v in type {
+	if emitter.active {
+		type: Type = emitter.type
+		switch v in type {
+		case None:
+			break
 		case PlayerType:
 			emitter.origin[0] = v.player[0]
 			emitter.origin[1] = v.player[1]
 		case ProjectileType:
 			emitter.origin[0] = v.projectile[0]
 			emitter.origin[1] = v.projectile[1]
-	}
+		}
 
-	// Emit particles?
-	if time > emitter.emissionstamp {
-		emitter.emissionstamp = time + emitter.emitRate
-		slots := PS_find_available_particle_slots(&emitter.particles.active, emitter.emitCount)
-		for i := 0; i < len(slots); i += 1 {
-			PS_emit(emitter, slots[i])
+		if time > emitter.emissionstamp {
+			emitter.emissionstamp = time + emitter.emitRate
+			slots := PS_find_available_particle_slots(&emitter.particles.active, emitter.emitCount)
+			for i := 0; i < len(slots); i += 1 {
+				PS_emit(emitter, slots[i])
+			}
 		}
 	}
 
@@ -182,9 +198,7 @@ PS_update_emitter :: proc(emitter: ^Emitter) -> bool {
 		emitter.particles.active[i] = !PS_update_particle(emitter, i)
 	}
 
-	fmt.println(emitter.kill)
-	
-	return time > emitter.deathstamp || emitter.kill
+	emitter.active = time > emitter.deathstamp || emitter.kill
 }
 
 PS_update_particle :: proc(emitter: ^Emitter, particle_i: int) -> bool {
@@ -200,6 +214,17 @@ PS_update_particle :: proc(emitter: ^Emitter, particle_i: int) -> bool {
 
 Scale_Vector2 :: proc(vec: rl.Vector2, scalar: f32) -> rl.Vector2 {
 	return rl.Vector2{vec[0] * scalar, vec[1] * scalar}
+}
+
+PS_find_available_emitter_slot :: proc(emitters: ^[EMITTER_CAPACITY]Emitter) -> int {
+	for i := 0; i < EMITTER_CAPACITY; i += 1 {
+		fmt.println("yo: ", i)
+		if emitters[i].active == false {
+			fmt.println("non active emitter found")
+			return i
+		}
+	}
+	return -1
 }
 
 PS_find_available_particle_slots :: proc(

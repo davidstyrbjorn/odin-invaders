@@ -25,7 +25,7 @@ Projectile :: struct {
 	timealive: f32,
 	source:    EntityType,
 	alive:     bool,
-	attached_emitter: ^Emitter,
+	attached_emitter: int,
 }
 
 INVADERS_PER_LINE :: 5
@@ -98,7 +98,7 @@ init_game :: proc() {
 
 find_available_projectile_index :: proc() -> int {
 	for i := 0; i < PROJECTILE_CAPACITY; i += 1 {
-		if !gameState.projectiles[i].alive {
+		if !gameState.projectiles.alive[i] {
 			return i
 		}
 	}
@@ -109,15 +109,15 @@ find_available_projectile_index :: proc() -> int {
 create_projectile_player :: proc() -> Projectile {
 	x := gameState.player_position.x + PLAYER_SIZE.x / 2
 	y := gameState.player_position.y
-	return Projectile{rl.Vector2{x, y}, f32(0), .Player, true, nil}
+	return Projectile{rl.Vector2{x, y}, f32(0), .Player, true, -1}
 }
 
 create_projectile_invader :: proc(x: f32, y: f32) -> Projectile {
-	return Projectile{rl.Vector2{x, y}, f32(0), .Invader, true, nil}
+	return Projectile{rl.Vector2{x, y}, f32(0), .Invader, true, -1}
 }
 
 create_projectile_dead :: proc() -> Projectile {
-	return Projectile{rl.Vector2{0, 0}, f32(0), .Player, false, nil}
+	return Projectile{rl.Vector2{0, 0}, f32(0), .Player, false, -1}
 
 }
 
@@ -221,7 +221,8 @@ update_invaders :: proc() {
 				// Unalive them
 				gameState.invader_dead[i] = true
 				gameState.projectiles.alive[j] = false
-				gameState.projectiles.attached_emitter[j].kill = true
+				// gameState.projectiles.attached_emitter[j].kill = true
+				// fmt.printf("Killing emitter with id: %i\n", gameState.projectiles.attached_emitter[j].some_count)
 			}
 		}
 	}
