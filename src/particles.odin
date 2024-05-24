@@ -54,12 +54,12 @@ Type :: union {
 }
 
 Emitter :: struct {
-	active:        bool, // indicating if emitter is alive in world
 	using _:       EmitterDefinition,
 	particles:     #soa[PARTICLE_CAPACITY]Particle,
 	deathstamp:    f64,
 	emissionstamp: f64,
 	kill:          bool,
+	active:        bool, // indicating if emitter is alive in world
 }
 
 EMITTER_CAPACITY :: 32
@@ -88,6 +88,7 @@ PS_init :: proc() {
 			active               = false,
 		}
 	}
+
 	t := time.now()
 	PS.rand = rand.create(u64(time.to_unix_seconds(t)))
 }
@@ -97,12 +98,12 @@ PS_destruct :: proc() {
 }
 
 PS_create_emitter :: proc(def: EmitterDefinition) -> int {
-	slot := PS_find_available_emitter_slot(&PS.emitters)
+	slot := PS_find_available_emitter_slot()
 	if slot == -1 {
 		fmt.println("Ran out of emitters!")
 		return slot // Break procedure here!
 	}
-	
+
 	emitter := &PS.emitters[slot]
 	emitter.origin = def.origin
 	emitter.type = def.type
@@ -113,17 +114,6 @@ PS_create_emitter :: proc(def: EmitterDefinition) -> int {
 	emitter.deathstamp = rl.GetTime() + 5
 	emitter.kill = false
 	emitter.active = true
-
-	// Init particles iteratively
-	for i := 0; i < PARTICLE_CAPACITY; i += 1 {
-		emitter.particles.position[i] = rl.Vector2{0, 0}
-		emitter.particles.velocity[i] = rl.Vector2{0, 0}
-		emitter.particles.deathstamp[i] = f64(-1)
-		emitter.particles.active[i] = false
-		emitter.particles.birthstamp[i] = f64(-1)
-	}
-
-	fmt.printf("Emitter init at %i\n", slot)
 
 	return slot
 }
@@ -198,7 +188,9 @@ PS_update_emitter :: proc(emitter: ^Emitter) {
 		emitter.particles.active[i] = !PS_update_particle(emitter, i)
 	}
 
-	emitter.active = time > emitter.deathstamp || emitter.kill
+	if emitter.active {
+		emitter.active = !(time > emitter.deathstamp || emitter.kill)
+	}
 }
 
 PS_update_particle :: proc(emitter: ^Emitter, particle_i: int) -> bool {
@@ -216,11 +208,9 @@ Scale_Vector2 :: proc(vec: rl.Vector2, scalar: f32) -> rl.Vector2 {
 	return rl.Vector2{vec[0] * scalar, vec[1] * scalar}
 }
 
-PS_find_available_emitter_slot :: proc(emitters: ^[EMITTER_CAPACITY]Emitter) -> int {
+PS_find_available_emitter_slot :: proc() -> int {
 	for i := 0; i < EMITTER_CAPACITY; i += 1 {
-		fmt.println("yo: ", i)
-		if emitters[i].active == false {
-			fmt.println("non active emitter found")
+		if PS.emitters[i].active == false {
 			return i
 		}
 	}
@@ -241,4 +231,10 @@ PS_find_available_particle_slots :: proc(
 	}
 
 	return slots
+}
+
+
+PS_kill_emitter :: proc(slot: int) {
+	assert(slot >= 0 && slot < EMITTER_CAPACITY)
+	PS.emitters[slot].kill = true	
 }
