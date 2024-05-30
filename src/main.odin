@@ -11,11 +11,13 @@ player_particle_init_particle_velocity :: proc() -> rl.Vector2 {
 	vel := rl.Vector2{-1, 0}
 	vel = rl.Vector2Rotate(vel, angle)
 	magnitude := 80 + rand.float32() * 10
-	return rl.Vector2{vel[0] * magnitude, vel[1] * magnitude*0}
+	return rl.Vector2{vel[0] * magnitude, vel[1] * magnitude * 0}
 }
+
 
 WINDOW_WIDTH :: 600
 WINDOW_HEIGHT :: 900
+PLAY_AREA :: rl.Rectangle{0, 0, WINDOW_WIDTH, WINDOW_HEIGHT * 0.8}
 
 PROJECTILE_WIDTH: f32 : 2.0
 PROJECTILE_HEIGHT: f32 : 16.0
@@ -54,18 +56,28 @@ BEATS_IN_SONG :: 8
 
 PROJECTILE_CAPACITY :: 256
 
+// A small assortment of invaders that together follow a predermined path
+GroupSpeed :: f32(0.5)
+InvaderGroup :: struct {
+	invaders:        [4]bool,
+	position:        [4]rl.Vector2,
+	time:            f32, // 0 to 1
+	brassier_handle: u8, // index into a specific brassier pattern
+}
+
 GameState :: struct {
-	rand:              rand.Rand,
-	player_position:   rl.Vector2,
-	projectiles:       #soa[PROJECTILE_CAPACITY]Projectile,
-	invader_dead:      [INVADER_CAPACITY]bool,
-	invader_x:         [INVADER_CAPACITY]f32,
-	invader_y:         [INVADER_CAPACITY]f32,
-	invader_direction: i8,
-	bpm:               u8,
-	rhytms:            map[int]struct {},
-	camera:            rl.Camera2D,
-	camera_shake_time_seconds: f32,
+	rand:                         rand.Rand,
+	player_position:              rl.Vector2,
+	projectiles:                  #soa[PROJECTILE_CAPACITY]Projectile,
+	invader_dead:                 [INVADER_CAPACITY]bool,
+	invader_x:                    [INVADER_CAPACITY]f32,
+	invader_y:                    [INVADER_CAPACITY]f32,
+	invader_direction:            i8,
+	invader_groups:               #soa[INVADER_CAPACITY]InvaderGroup,
+	bpm:                          u8,
+	rhytms:                       map[int]struct {},
+	camera:                       rl.Camera2D,
+	camera_shake_time_seconds:    f32,
 	camera_shake_strength_pixels: f32,
 }
 
@@ -106,11 +118,11 @@ init_game :: proc() {
 
 	setup_invaders()
 
-	gameState.camera = rl.Camera2D{
-		offset = rl.Vector2{0, 0},
-		target = rl.Vector2{0, 0},
+	gameState.camera = rl.Camera2D {
+		offset   = rl.Vector2{0, 0},
+		target   = rl.Vector2{0, 0},
 		rotation = 0,
-		zoom = 1,
+		zoom     = 1,
 	}
 	gameState.camera_shake_time_seconds = 0
 	gameState.camera_shake_strength_pixels = 10
@@ -180,8 +192,8 @@ update_player :: proc() {
 			origin = rl.Vector2{0, 0},
 			type = ProjectileType{projectile = &gameState.projectiles.position[index]},
 			force = rl.Vector2{0, 200},
-			emitRate = 0.1,
-			emitCount = 4,
+			emitRate = 0.05,
+			emitCount = 1,
 			particleDuration = 1,
 		}
 		test.initVelocityCallback = player_particle_init_particle_velocity
@@ -235,7 +247,7 @@ update_invaders :: proc() {
 				// Feedback
 				// TODO: Camera shake
 				gameState.camera_shake_time_seconds = 0.1
-				
+
 				// TODO: Particles
 				// create_emitter({x, y, .Invader})
 
@@ -298,16 +310,30 @@ rhytm_event :: proc() {
 		}
 	}
 
-	// Important to do this after moving the invaders, since this will make sure the shot is coming from the correct position
 	{ /* SHOOT PROJECTILES FROM INVADERS */
 		for i := 0; i < INVADER_CAPACITY; i += 1 {
-			r := (f32)(rand.uint32(&gameState.rand)) / 4_294_967_295
-			if r > 0.9 {
-				x := gameState.invader_x[i] + (INVADER_SIZE[0] / 2)
-				y := gameState.invader_y[i] + (INVADER_SIZE[1] / 2)
-				gameState.projectiles[find_available_projectile_index()] =
-					create_projectile_invader(x, y)
+			index_to_below := i + INVADERS_PER_LINE
+			if index_to_below >= INVADER_CAPACITY {
+				continue
 			}
+
+			if !gameState.invader_dead[i] &&
+			   (index_to_below >= INVADER_CAPACITY || gameState.invader_dead[index_to_below]) {
+				r := (f32)(rand.uint32(&gameState.rand)) / 4_294_967_295
+				if r > 0.5 { 	// 50% chance of shooting
+					x := gameState.invader_x[i] + (INVADER_SIZE[0] / 2)
+					y := gameState.invader_y[i] + (INVADER_SIZE[1] / 2)
+					gameState.projectiles[find_available_projectile_index()] =
+						create_projectile_invader(x, y)
+				}
+			}
+
+			// if r > 0.9 {
+			// 	x := gameState.invader_x[i] + (INVADER_SIZE[0] / 2)
+			// 	y := gameState.invader_y[i] + (INVADER_SIZE[1] / 2)
+			// 	gameState.projectiles[find_available_projectile_index()] =
+			// 		create_projectile_invader(x, y)
+			// }
 		}
 	}
 }
@@ -316,7 +342,7 @@ update_camera :: proc() {
 	if gameState.camera_shake_time_seconds > 0 {
 		offset_x := (f32)(rand.uint32(&gameState.rand)) / 4_294_967_295
 		offset_y := (f32)(rand.uint32(&gameState.rand)) / 4_294_967_295
-		gameState.camera.offset = rl.Vector2{
+		gameState.camera.offset = rl.Vector2 {
 			offset_x * gameState.camera_shake_strength_pixels,
 			offset_y * gameState.camera_shake_strength_pixels,
 		}
@@ -341,7 +367,7 @@ main :: proc() {
 	song := rl.LoadMusicStream("../assets/beat-invaders.wav")
 	song.looping = true
 	rl.SetMusicVolume(song, 0.2)
-	// rl.PlayMusicStream(song)
+	rl.PlayMusicStream(song)
 
 	totalLength := rl.GetMusicTimeLength(song)
 	bps := f32(gameState.bpm) / 60
@@ -374,7 +400,7 @@ main :: proc() {
 		}
 
 		{
-			// rl.UpdateMusicStream(song)
+			rl.UpdateMusicStream(song)
 
 			t := rl.GetMusicTimePlayed(song) / totalLength // 0 -> 1
 			t *= BEATS_IN_SONG // 0 -> BEATS_IN_SONG
@@ -394,7 +420,9 @@ main :: proc() {
 			update_player()
 			update_projectiles()
 			update_invaders()
-			update_camera();
+			update_camera()
+
+			brassiere_test(PLAY_AREA)
 
 			PS_update()
 		}
@@ -405,12 +433,12 @@ main :: proc() {
 			rl.ClearBackground(rl.BLACK)
 			rl.BeginMode2D(gameState.camera)
 
-				draw_player()
-				draw_projectiles()
-				draw_invaders()
-				PS_draw()
-			rl.EndMode2D();
-			
+			draw_player()
+			draw_projectiles()
+			draw_invaders()
+			PS_draw()
+			rl.EndMode2D()
+
 			rl.DrawText("Invaders left: -", 0, 0, 20, rl.WHITE)
 			rl.EndDrawing()
 		}

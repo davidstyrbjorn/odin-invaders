@@ -62,7 +62,7 @@ Emitter :: struct {
 	active:        bool, // indicating if emitter is alive in world
 }
 
-EMITTER_CAPACITY :: 32
+EMITTER_CAPACITY :: 64
 
 // Master of all Particles and their Emitters
 ParticleSystem :: struct {
@@ -236,5 +236,5 @@ PS_find_available_particle_slots :: proc(
 
 PS_kill_emitter :: proc(slot: int) {
 	assert(slot >= 0 && slot < EMITTER_CAPACITY)
-	PS.emitters[slot].kill = true	
+	PS.emitters[slot].kill = true
 }
