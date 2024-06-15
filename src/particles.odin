@@ -67,7 +67,6 @@ EMITTER_CAPACITY :: 64
 // Master of all Particles and their Emitters
 ParticleSystem :: struct {
 	emitters: [EMITTER_CAPACITY]Emitter,
-	rand:     rand.Rand,
 }
 
 PS := ParticleSystem{}
@@ -90,7 +89,6 @@ PS_init :: proc() {
 	}
 
 	t := time.now()
-	PS.rand = rand.create(u64(time.to_unix_seconds(t)))
 }
 
 PS_destruct :: proc() {

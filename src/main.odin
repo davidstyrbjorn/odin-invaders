@@ -49,7 +49,6 @@ BEATS_IN_SONG :: 8
 PROJECTILE_CAPACITY :: 256
 
 GameState :: struct {
-	rand:                         rand.Rand,
 	player_position:              rl.Vector2,
 	projectiles:                  #soa[PROJECTILE_CAPACITY]Projectile,
 	invader_dead:                 [INVADER_CAPACITY]bool,
@@ -68,7 +67,7 @@ gameState := GameState{}
 
 init_game :: proc() {
 	t := time.now()
-	gameState.rand = rand.create(u64(time.to_unix_seconds(t)))
+	rand.create(u64(time.to_unix_seconds(t)))
 
 	gameState.player_position = rl.Vector2(0)
 	gameState.player_position.x = WINDOW_WIDTH / 2 - PLAYER_SIZE.x / 2
@@ -229,7 +228,7 @@ rhytm_event :: proc() {
 
 			if !gameState.invader_dead[i] &&
 			   (index_to_below >= INVADER_CAPACITY || gameState.invader_dead[index_to_below]) {
-				r := (f32)(rand.uint32(&gameState.rand)) / 4_294_967_295
+				r := (f32)(rand.uint32()) / 4_294_967_295
 				if r > 0.5 { 	// 50% chance of shooting
 					x := gameState.invader_x[i] + (INVADER_SIZE[0] / 2)
 					y := gameState.invader_y[i] + (INVADER_SIZE[1] / 2)
@@ -250,8 +249,8 @@ rhytm_event :: proc() {
 
 update_camera :: proc() {
 	if gameState.camera_shake_time_seconds > 0 {
-		offset_x := (f32)(rand.uint32(&gameState.rand)) / 4_294_967_295
-		offset_y := (f32)(rand.uint32(&gameState.rand)) / 4_294_967_295
+		offset_x := (f32)(rand.uint32()) / 4_294_967_295
+		offset_y := (f32)(rand.uint32()) / 4_294_967_295
 		gameState.camera.offset = rl.Vector2 {
 			offset_x * gameState.camera_shake_strength_pixels,
 			offset_y * gameState.camera_shake_strength_pixels,
@@ -329,19 +328,23 @@ main :: proc() {
 		{
 			update_player()
 			update_projectiles()
-			update_invaders()
+			// update_invaders()
 			update_camera()
 
-			brassiere_test()
+			// brassiere_test()
 
 			PS_update()
 		}
 
 		// Tooling 
 		{
-			brassiere_on_update(PLAY_AREA)
+			mouse_pos := rl.GetMousePosition()
+			brassiere_on_update(mouse_pos, rl.Vector2{WINDOW_WIDTH, WINDOW_HEIGHT})
 			if rl.IsMouseButtonPressed(rl.MouseButton.LEFT) {
-				brassiere_on_click(rl.GetMousePosition())
+				brassiere_on_click(mouse_pos)
+			}
+			if rl.IsMouseButtonReleased(rl.MouseButton.LEFT) {
+				brassiere_on_release()
 			}
 		}
 
@@ -353,7 +356,7 @@ main :: proc() {
 
 			draw_player()
 			draw_projectiles()
-			draw_invaders()
+			// draw_invaders()
 			PS_draw()
 
 			brassiere_draw()
@@ -363,5 +366,8 @@ main :: proc() {
 			rl.DrawText("Invaders left: -", 0, 0, 20, rl.WHITE)
 			rl.EndDrawing()
 		}
+
+		free_all(context.temp_allocator)
 	}
+
 }
