@@ -71,13 +71,10 @@ brassiere_on_click :: proc(mouse_pos: rl.Vector2) {
 		}
 	}
 
-	fmt.printf("closest_dist: %f\n", closest_dist)
-
 	// Select the point if it is within reasonable distance
-	closest_dist_threshold_pixels :: f32(10)
+	closest_dist_threshold_pixels :: f32(25)
 	if closest_dist < closest_dist_threshold_pixels {
 		current_point = closest
-		fmt.printf("Selected point: %v\n", current_point)
 	}
 }
 
@@ -93,13 +90,6 @@ brassiere_on_update :: proc(mouse_pos: rl.Vector2, window_size: rl.Vector2) {
 	// Move the point to the mouse
 	control_points[current_point][0] = mouse_pos[0]
 	control_points[current_point][1] = mouse_pos[1]
-
-	fmt.printf("current_point: %v\n", current_point)
-
-	// Clamp to the relative space
-	// current_point[0] = math.clamp(current_point[0], 0, 1)
-	// current_point[1] = math.clamp(current_point[1], 0, 1)
-
 }
 
 brassiere_draw :: proc() {
@@ -120,11 +110,9 @@ brassiere_draw :: proc() {
 
 	time := rl.GetTime()
 	t := math.sin(time * 2) * 0.5 + 0.5 // 0 to 1
-	// fmt.printf("t: %f\n", t)
 
 	for i := 0; i < 100; i += 1 {
 		t := f32(i) / 100
-		fmt.printf("t: %f\n", t)
 		p := brassiere_4(
 			t,
 			control_points[0],
@@ -134,4 +122,15 @@ brassiere_draw :: proc() {
 		)
 		rl.DrawCircleV(p, 2, rl.RED)
 	}
+}
+
+brassiere_debug_dump :: proc() {
+	str := fmt.tprintfln(
+		"control_points: %v %v %v %v",
+		control_points[0],
+		control_points[1],
+		control_points[2],
+		control_points[3],
+	)
+	fmt.print(str)
 }

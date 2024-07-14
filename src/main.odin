@@ -19,7 +19,7 @@ WINDOW_HEIGHT :: 900
 
 PROJECTILE_WIDTH: f32 : 2.0
 PROJECTILE_HEIGHT: f32 : 16.0
-PROJECTILE_SPEED_PLAYER :: 600
+PROJECTILE_SPEED_PLAYER :: 750
 PROJECTILE_SPEED_INVADER :: 450
 
 EntityType :: enum u8 {
@@ -52,8 +52,6 @@ GameState :: struct {
 	player_position:              rl.Vector2,
 	projectiles:                  #soa[PROJECTILE_CAPACITY]Projectile,
 	invader_dead:                 [INVADER_CAPACITY]bool,
-	invader_x:                    [INVADER_CAPACITY]f32,
-	invader_y:                    [INVADER_CAPACITY]f32,
 	invader_direction:            i8,
 	invader_groups:               #soa[INVADER_CAPACITY]InvaderGroup,
 	bpm:                          u8,
@@ -78,8 +76,6 @@ init_game :: proc() {
 	}
 
 	gameState.invader_dead = [INVADER_CAPACITY]bool{}
-	gameState.invader_x = [INVADER_CAPACITY]f32{}
-	gameState.invader_y = [INVADER_CAPACITY]f32{}
 	gameState.invader_direction = 1
 
 	gameState.bpm = 130
@@ -196,55 +192,7 @@ update_projectiles :: proc() {
 }
 
 rhytm_event :: proc() {
-	{ /* MOVE THE INVADERS */
-		would_translate := 50 * f32(gameState.invader_direction)
-		someone_hit_wall := false
-		for x, i in gameState.invader_x {
-			if (x + would_translate) + INVADER_SIZE.x > WINDOW_WIDTH &&
-			   gameState.invader_direction == 1 {
-				someone_hit_wall = true
-				break
-			} else if (x + would_translate) < 0 && gameState.invader_direction == -1 {
-				someone_hit_wall = true
-				break
-			}
-		}
 
-		if someone_hit_wall {
-			gameState.invader_direction *= -1
-			gameState.invader_y += 20
-		} else {
-			translation := 50 * f32(gameState.invader_direction)
-			gameState.invader_x = gameState.invader_x + translation
-		}
-	}
-
-	{ /* SHOOT PROJECTILES FROM INVADERS */
-		for i := 0; i < INVADER_CAPACITY; i += 1 {
-			index_to_below := i + INVADERS_PER_LINE
-			if index_to_below >= INVADER_CAPACITY {
-				continue
-			}
-
-			if !gameState.invader_dead[i] &&
-			   (index_to_below >= INVADER_CAPACITY || gameState.invader_dead[index_to_below]) {
-				r := (f32)(rand.uint32()) / 4_294_967_295
-				if r > 0.5 { 	// 50% chance of shooting
-					x := gameState.invader_x[i] + (INVADER_SIZE[0] / 2)
-					y := gameState.invader_y[i] + (INVADER_SIZE[1] / 2)
-					gameState.projectiles[find_available_projectile_index()] =
-						create_projectile_invader(x, y)
-				}
-			}
-
-			// if r > 0.9 {
-			// 	x := gameState.invader_x[i] + (INVADER_SIZE[0] / 2)
-			// 	y := gameState.invader_y[i] + (INVADER_SIZE[1] / 2)
-			// 	gameState.projectiles[find_available_projectile_index()] =
-			// 		create_projectile_invader(x, y)
-			// }
-		}
-	}
 }
 
 update_camera :: proc() {
@@ -289,6 +237,9 @@ main :: proc() {
 	currentBeat := int(0)
 	lastFrameBeat := int(-1)
 
+	trail_offset := rl.Vector2{PLAYER_SIZE[0] / 2, PLAYER_SIZE[1] / 2}
+	trail := create_trail(100, &gameState.player_position, trail_offset)
+
 	/*
 	test := EmitterDefinition {
 		origin = rl.Vector2{WINDOW_WIDTH/2.0, WINDOW_HEIGHT/2.0},
@@ -330,8 +281,7 @@ main :: proc() {
 			update_projectiles()
 			// update_invaders()
 			update_camera()
-
-			// brassiere_test()
+			update_trail(&trail)
 
 			PS_update()
 		}
@@ -346,6 +296,9 @@ main :: proc() {
 			if rl.IsMouseButtonReleased(rl.MouseButton.LEFT) {
 				brassiere_on_release()
 			}
+			if rl.IsKeyPressed(rl.KeyboardKey.SPACE) {
+				brassiere_debug_dump()
+			}
 		}
 
 		// Draw stuff
@@ -358,6 +311,7 @@ main :: proc() {
 			draw_projectiles()
 			// draw_invaders()
 			PS_draw()
+			draw_trail(trail)
 
 			brassiere_draw()
 
@@ -370,4 +324,5 @@ main :: proc() {
 		free_all(context.temp_allocator)
 	}
 
+	free_trail(trail)
 }
