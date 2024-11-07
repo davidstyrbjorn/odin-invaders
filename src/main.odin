@@ -307,11 +307,11 @@ main :: proc() {
 			rl.ClearBackground(rl.BLACK)
 			rl.BeginMode2D(gameState.camera)
 
+			draw_trail(trail)
 			draw_player()
 			draw_projectiles()
 			// draw_invaders()
 			PS_draw()
-			draw_trail(trail)
 
 			brassiere_draw()
 
